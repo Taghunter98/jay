@@ -1,3 +1,6 @@
 # Jay stuff
 jay_out/
 jay/
+
+# Python stuff
+.venv
