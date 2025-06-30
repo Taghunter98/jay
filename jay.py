@@ -2,6 +2,7 @@
 Jay Compiler Prototype
 
 TODO
+- string concatentation
 - Comment support
 - control statements
 
@@ -163,7 +164,15 @@ def compile_jay_func(lines: str, scope: ScopeStack, func_table: dict) -> str:
                 if not right.startswith('"'):
                     right = f'"{right}"'
 
-                right = f"{right}.to_string()"
+                # String concatenation 
+                if "+" in right:
+                    operands = [op.strip() for op in re.split(r'\+', right)]
+                    fmt = '"' + '{}'*len(operands) + '"'
+                    args = ', '.join(operands)
+                    right = f'format!({fmt}, {args})'
+                else:
+                    right = f"{right}.to_string()"
+
                 body.append(f"    let {vname}: {vtype} = {right};")
 
             else:
@@ -188,6 +197,7 @@ def compile_jay_func(lines: str, scope: ScopeStack, func_table: dict) -> str:
         elif re.match(r"\w+\(.*\)", line):
             body.append(f"    {line};")
 
+            
     scope.exit_scope()
 
     params_rust = ", ".join(f"{n}: {t}" for n, t in params)
