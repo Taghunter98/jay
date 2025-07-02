@@ -117,12 +117,12 @@ def build_function_table(lines: str) -> dict:
     return func_table
 
 
-def compile_jay_func(lines: str, scope: ScopeStack, func_table: dict) -> str:
+def compile_jay_func(lines: list, scope: 'ScopeStack', func_table: dict, is_block = False) -> str:
     """
     The function compiles a Jay function into a valid Rust function.
 
     Args:
-        lines (str): Jay code
+        lines (list): Jay code lines
         scope (ScopeStack): The Scope stack
         func_table (dict): The function table - ensures functions can be called
 
@@ -139,70 +139,102 @@ def compile_jay_func(lines: str, scope: ScopeStack, func_table: dict) -> str:
     for pname, ptype in params:
         scope.declare_var(pname, ptype)
 
-    for line in lines[1:-1]:
-        line = line.rstrip(";").strip()
+    i = 1  # Skip the function header
+    while i < len(lines) - 1:  # Exclude the closing brace
+        line = lines[i].rstrip(";").strip()
 
         if line.startswith("let "):
-            # Expressions
             _, rest = line.split("let ", 1)
-
+            
             if ":" in rest:
                 left, right = rest.split("=")
                 vname, vtype = left.strip().split(":")
                 vname, vtype = vname.strip(), jay_type_to_rust(vtype.strip())
-
                 scope.declare_var(vname, vtype)
-
+                # Change this -> add if scope var then True
                 right = right.strip()
-
-            # Function calls
+            
             if re.match(r"\w+\(.*\)", right):
                 body.append(f"    let {vname}: {vtype} = {right};")
-
-            # String types
+            
             elif vtype == "String":
+                
                 if not right.startswith('"'):
                     right = f'"{right}"'
-
-                # String concatenation 
+                
                 if "+" in right:
                     operands = [op.strip() for op in re.split(r'\+', right)]
                     fmt = '"' + '{}'*len(operands) + '"'
                     args = ', '.join(operands)
                     right = f'format!({fmt}, {args})'
+                
                 else:
                     right = f"{right}.to_string()"
-
+                
                 body.append(f"    let {vname}: {vtype} = {right};")
-
+            
             else:
                 body.append(f"    let {vname}: {vtype} = {right};")
+            
+            i += 1
 
-        # Return
         elif line.startswith("return "):
-            expr = line[len("return ") :].strip()
+            expr = line[len("return "):].strip()
             body.append(f"    return {expr};")
+            i += 1
 
-        # Print statement
         elif line.startswith("print("):
-            inner = line[len("print(") : -1]
+            inner = line[len("print("):-1]
             vtype = scope.lookup_var(inner)
-
             if vtype == "String":
                 body.append(f'    println!("{{}}", {inner}.as_str());')
             else:
                 body.append(f'    println!("{{}}", {inner});')
+            i += 1
 
-        # Standalone function calls
         elif re.match(r"\w+\(.*\)", line):
             body.append(f"    {line};")
+            i += 1
 
+        elif (line.startswith("if ") or line.startswith("else") or line.startswith("while ")) and "{" in line:
             
+            # Start of block, collect until matching '}'
+            block_lines = [line]
+            open_braces = line.count("{")
+            close_braces = line.count("}")
+            i += 1
+
+            while open_braces > close_braces and i < len(lines) - 1:
+                block_line = lines[i]
+                # Do stuff to the line here later
+
+                block_lines.append(block_line)
+                open_braces += block_line.count("{")
+                close_braces += block_line.count("}")
+
+                i += 1
+
+            # Recursively process the block (including the control statement)
+            block_rust = compile_jay_func(block_lines, scope, func_table, True)
+
+            # Remove Rust fn header/trailer for inner blocks, keep only inner lines
+            block_inner = "\n".join(block_rust.split("\n")[1:-1])
+            for l in block_inner.splitlines():
+                body.append("    " + l if l.strip() else l)
+        else:
+            i += 1
+
     scope.exit_scope()
-
     params_rust = ", ".join(f"{n}: {t}" for n, t in params)
-
-    return f"pub fn {name}({params_rust}) -> {ret_type} {{\n" + "\n".join(body) + "\n}"
+    
+    # Check if block to stop duplicating brackets
+    if is_block:
+        return "\n".join(body)
+    else:
+        params_rust = ", ".join(f"{n}: {t}" for n, t in params)
+        return f"""pub fn {name}({params_rust}) -> {ret_type} {{
+{chr(10).join(body)}
+}}"""
 
 
 def parse_and_compile_jay(jay_code: str):

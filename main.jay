@@ -12,6 +12,11 @@ func main() {
 
     print(hello(name));
 
+    if (a < 0) {
+        res = a + " is negative";
+    }
+
+    print(res)
 }
 
 func add(a: int, b: int) -> int {
@@ -21,7 +26,7 @@ func add(a: int, b: int) -> int {
 func mult(a: int, b: int) -> int {
     return a * b;
 }
-
+// this is a comment
 func hello(name: string) -> string {
     let greet: string = "Hi " + name + "!";
     return greet;
